@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+
+<title>Smart Queue - Book Appointment</title>
+
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<style>
+
+body{
+font-family:"Segoe UI",Arial;
+margin:0;
+background:#f1f5f9;
+}
+
+
+.sidebar{
+position:fixed;
+left:0;
+top:0;
+height:100%;
+width:230px;
+background:#0f172a;
+color:white;
+padding:25px;
+}
+
+.sidebar h2{
+margin-bottom:30px;
+}
+
+
+
+.main{
+margin-left:250px;
+padding:40px;
+}
+
+
+
+.container{
+background:white;
+padding:30px;
+width:420px;
+border-radius:10px;
+box-shadow:0 4px 12px rgba(0,0,0,0.08);
+}
+
+
+
+input,select{
+width:100%;
+padding:10px;
+margin-top:5px;
+border:1px solid #ccc;
+border-radius:6px;
+}
+
+
+
+button{
+margin-top:15px;
+padding:12px;
+width:100%;
+background:#2563eb;
+color:white;
+border:none;
+border-radius:6px;
+cursor:pointer;
+font-size:15px;
+}
+
+button:hover{
+background:#1e4fd6;
+}
+
+
+
+.result{
+margin-top:20px;
+padding:15px;
+background:#eef3ff;
+border-radius:6px;
+display:none;
+}
+
+
+
+label{
+font-weight:500;
+font-size:14px;
+}
+
+.result{
+margin-top:20px;
+padding:15px;
+background:#eef3ff;
+border-radius:6px;
+display:none;
+max-height:350px;
+overflow-y:auto;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div class="sidebar">
+
+<h2>🏥 Smart Queue</h2>
+
+<button onclick="goDashboard()">Dashboard</button>
+<br><br>
+<button onclick="logout()">Logout</button>
+
+</div>
+
+
+<div class="main">
+
+<div class="container">
+
+<h2>Book Appointment</h2>
+
+<form id="bookForm">
+
+<label>Name</label>
+<input type="text" id="name" required>
+
+<br><br>
+
+<label>Phone</label>
+<input type="text" id="phone" required>
+
+<br><br>
+
+<label>Appointment Date</label>
+<input type="date" id="date" required>
+
+<br><br>
+
+<label>Preferred Hour</label>
+
+<select id="hour">
+
+<option value="9">09:00</option>
+<option value="10">10:00</option>
+<option value="11">11:00</option>
+<option value="12">12:00</option>
+<option value="13">13:00</option>
+<option value="14">14:00</option>
+<option value="15">15:00</option>
+<option value="16">16:00</option>
+<option value="17">17:00</option>
+
+</select>
+
+<br><br>
+
+<label>Distance (KM)</label>
+<input type="number" id="distance" step="0.1" required>
+
+<br><br>
+
+<label>Urgency</label>
+
+<select id="urgency">
+
+<option value="low">Low</option>
+<option value="medium">Medium</option>
+<option value="high">High</option>
+
+</select>
+
+<button type="submit" id="submitBtn">Predict & Book</button>
+
+</form>
+
+<div id="result" class="result"></div>
+
+</div>
+
+</div>
+
+<script>
+
+let user_id = localStorage.getItem("user_id")
+
+if(!user_id){
+
+alert("Please login first")
+window.location="/login.html"
+
+}
+
+
+
+document.getElementById("bookForm").onsubmit = async function(e){
+
+e.preventDefault()
+
+let btn=document.getElementById("submitBtn")
+
+btn.innerText="Processing..."
+btn.disabled=true
+
+let data={
+
+user_id:Number(user_id),
+
+name:document.getElementById("name").value,
+phone:document.getElementById("phone").value,
+appointment_date:document.getElementById("date").value,
+
+hour:Number(document.getElementById("hour").value),
+
+distance_km:Number(document.getElementById("distance").value),
+
+reported_urgency:document.getElementById("urgency").value
+
+}
+
+try{
+
+let response = await fetch("/predict",{
+
+method:"POST",
+
+headers:{
+"Content-Type":"application/json"
+},
+
+body:JSON.stringify(data)
+
+})
+
+if(!response.ok){
+throw new Error("Prediction failed")
+}
+
+let result = await response.json()
+
+let box=document.getElementById("result")
+
+box.style.display="block"
+
+let explainHTML=""
+
+explainHTML +=
+
+"<b>Your Token:</b> "+result.token_number+"<br><br>"+
+"<b>Counter:</b> "+(result.counter_id ?? "-")+"<br><br>"+
+
+"<b>Members Before You:</b> "+result.patients_ahead+"<br><br>"+
+
+"<b>Queue Position:</b> "+(result.queue_position ?? "N/A")+"<br><br>"+
+
+"<b>Estimated Wait Time:</b> "+
+result.estimated_wait_time_minutes+" minutes<br><br>"+
+
+"<b>No Show Probability:</b> "+
+(result.no_show_probability*100).toFixed(2)+"%<br><br>"
+
+
+
+
+if(result.no_show_explanation){
+
+explainHTML += "<b>No Show Factors</b><br>"
+
+for(let key in result.no_show_explanation){
+
+explainHTML += key+" : "+result.no_show_explanation[key].toFixed(3)+"<br>"
+
+}
+
+}
+
+
+
+
+if(result.wait_time_explanation){
+
+explainHTML += "<br><b>Wait Time Factors</b><br>"
+
+for(let key in result.wait_time_explanation){
+
+explainHTML += key+" : "+result.wait_time_explanation[key].toFixed(3)+"<br>"
+
+}
+
+}
+
+
+
+
+if(result.lime_explanation){
+
+explainHTML += "<br><b>LIME Explanation</b><br>"
+
+result.lime_explanation.forEach(item=>{
+
+explainHTML += item[0]+" : "+item[1].toFixed(4)+"<br>"
+
+})
+
+}
+
+
+
+
+if(result.human_explanation){
+
+explainHTML += "<br><b>AI Insight</b><br>"+result.human_explanation
+
+}
+
+box.innerHTML = explainHTML
+
+}
+catch(error){
+
+alert("Error booking appointment")
+console.error(error)
+
+}
+
+btn.innerText="Predict & Book"
+btn.disabled=false
+
+}
+
+
+
+
+function logout(){
+
+localStorage.clear()
+window.location="/login.html"
+
+}
+
+function goDashboard(){
+
+window.location="/user_dashboard.html"
+
+}
+
+</script>
+
+</body>
+
+</html>
